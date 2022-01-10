@@ -1,14 +1,14 @@
-# NS Host Pord Forward
+# NS Host Port Forward
 
 Any port in ns to host, or host to in ns forward.
 
-# Build
+## Build
 
 ```bash
 ./docker-build.sh
 ```
 
-## NS to Host Forwarding
+### NS to Host Forwarding
 
 >       +-------------+                                   +--------------+  
 >       |             |                                   |     Host     |  
@@ -21,7 +21,7 @@ Any port in ns to host, or host to in ns forward.
 docker run --privileged -v/var/run/netns:/var/run/netns --network=host --rm -itd nshostforward --host-port=22 --ns=netns-1 --ns-port=2222 --destination-to=ns
 ```
 
-## Host to NS Forwarding
+### Host to NS Forwarding
 
 >       +-------------+                                   +--------------+  
 >       |     Host    |                                   |              |  
