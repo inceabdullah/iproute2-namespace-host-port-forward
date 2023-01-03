@@ -34,5 +34,28 @@ docker run --privileged -v/var/run/netns:/var/run/netns --network=host --rm -itd
 docker run -dit --privileged --network=host -v/var/run/netns:/var/run/netns nshostforward --host-port=2222 --ns=netns-1 --ns-port=22
 ```
 
+### Container to Host
+
+>       +-------------+                                   +--------------+  
+>       |             |                                   |     Host     |  
+>       |  container  | --------------------------------->|      or      |  
+>       |             | listen :2222                  :22 |   Default ns |  
+>       +------+------+     container to host forward     +-------+------+  
+
+
+```bash
+CONTAINER_ID=<CONTAINER_ID>
+
+docker run --privileged \
+    -v/var/run/netns:/var/run/netns \
+    -v/proc:/proc_host \
+    -v/var/run/docker.sock:/var/run/docker.sock \
+    --network=host -dit nshostforward --host-port=22 \
+    --destination-to=container \
+    --container-id=$CONTAINER_ID \
+    --container-port=2222 \
+    --forward-to=host \
+    --host-port=22
+```
 
 
