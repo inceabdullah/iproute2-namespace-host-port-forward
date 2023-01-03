@@ -50,7 +50,7 @@ docker run --privileged \
     -v/var/run/netns:/var/run/netns \
     -v/proc:/proc_host \
     -v/var/run/docker.sock:/var/run/docker.sock \
-    --network=host -dit nshostforward --host-port=22 \
+    --network=host -dit nshostforward \
     --destination-to=container \
     --container-id=$CONTAINER_ID \
     --container-port=2222 \
