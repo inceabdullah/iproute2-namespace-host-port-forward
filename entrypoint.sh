@@ -16,6 +16,10 @@ case $i in
     HOST_HOST="${i#*=}"
     echo -e "HOST_HOST: ${HOST_HOST}"    
     ;;
+    --container-host=*)
+    CONTAINER_HOST="${i#*=}"
+    echo -e "CONTAINER_HOST: ${CONTAINER_HOST}"    
+    ;;
     --ns-port=*)
     NS_PORT="${i#*=}"
     echo -e "NS_PORT: ${NS_PORT}"    
@@ -31,6 +35,18 @@ case $i in
     --destination-to=*)
     DESTINATION_TO="${i#*=}"
     echo -e "DESTINATION_TO: ${DESTINATION_TO}"    
+    ;;
+    --forward-to=*)
+    FORWARD_TO="${i#*=}"
+    echo -e "FORWARD_TO: ${FORWARD_TO}"    
+    ;;
+    --container-id=*)
+    CONTAINER_ID="${i#*=}"
+    echo -e "CONTAINER_ID: ${CONTAINER_ID}"    
+    ;;
+    --container-port=*)
+    CONTAINER_PORT="${i#*=}"
+    echo -e "CONTAINER_PORT: ${CONTAINER_PORT}"    
     ;;
     --help)
     HELP=1
@@ -66,6 +82,11 @@ then
     HOST_HOST="0.0.0.0"
 fi
 
+if [ -z "$CONTAINER_HOST" ]
+then
+    CONTAINER_HOST="0.0.0.0"
+fi
+
 NETNS_COMMAND_PREFIX="ip netns exec ${NS} "
 
 
@@ -81,6 +102,32 @@ echo "\$@: $@"
 if [ "$DESTINATION_TO" == "ns" ]; then
         UNIX_FILE="/tmp/socket_${HOST_HOST}_${HOST_PORT}_${NS}_${NS_PORT}_${DESTINATION_TO}"
         echo "$UNIX_FILE"
+        socat -lf/dev/null unix-listen:\"${UNIX_FILE}\",fork,reuseaddr TCP:${HOST_HOST}:${HOST_PORT} &
+        ip netns exec ${NS} socat -lf/dev/null tcp-listen:${NS_PORT},fork,reuseaddr unix-connect:\"${UNIX_FILE}\"
+elif [ "$DESTINATION_TO" == "container" ]; then
+        PATTERN="${HOST_HOST}_${HOST_PORT}_container_${CONTAINER_ID}_${CONTAINER_HOST}_${CONTAINER_PORT}_destination_${DESTINATION_TO}_forward_to_${FORWARD_TO}"
+        # gettin docker PID
+        CONTAINER_PID=`docker inspect -f '{{.State.Pid}}' ${CONTAINER_ID}`
+        echo -e "${CONTAINER_ID}\t=>\t$CONTAINER_PID"
+
+        # remove old namespace
+        unlink /var/run/netns/${PATTERN} 2>/dev/null &
+
+        # making ns with PID
+        TARGET="/proc_host/${CONTAINER_PID}/ns/net"
+        MOUNT_POINT="/var/run/netns/${PATTERN}"
+        echo -e "TARGET:\t${TARGET}\MOUNT_POINT:\t${MOUNT_POINT}"
+
+        mkdir -p /var/run/netns
+        touch $MOUNT_POINT
+        mount -o bind $TARGET $MOUNT_POINT
+
+        UNIX_FILE="/tmp/socket_${PATTERN}"
+        echo -e "Unix file:\t$UNIX_FILE"
+
+        NS=$PATTERN
+        NS_PORT=$CONTAINER_PORT
+        
         socat -lf/dev/null unix-listen:\"${UNIX_FILE}\",fork,reuseaddr TCP:${HOST_HOST}:${HOST_PORT} &
         ip netns exec ${NS} socat -lf/dev/null tcp-listen:${NS_PORT},fork,reuseaddr unix-connect:\"${UNIX_FILE}\"
 else
