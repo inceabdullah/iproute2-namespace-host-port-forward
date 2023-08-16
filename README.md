@@ -58,4 +58,30 @@ docker run --privileged \
     --host-port=22
 ```
 
+### Docker to Docker Forwarding
+
+This method allows you to forward traffic from one Docker container to another Docker container.
+
+>       +-------------+                                   +--------------+  
+>       |             |                                   |              |  
+>       |  Container1 | --------------------------------->|  Container2  |  
+>       |             | listen :2222                  :22 |              |  
+>       +------+------+      docker to docker forward     +-------+------+  
+
+```bash
+SOURCE_CONTAINER_ID=<SOURCE_CONTAINER_ID>
+DEST_CONTAINER_ID=<DEST_CONTAINER_ID>
+
+docker run --privileged \
+    -v/var/run/docker.sock:/var/run/docker.sock \
+    -v/proc:/proc_host \
+    --network=host -dit nshostforward \
+    --destination-to=docker \
+    --source-container-id=$SOURCE_CONTAINER_ID \
+    --source-port=2222 \
+    --dest-container-id=$DEST_CONTAINER_ID \
+    --dest-port=22
+```
+
+This setup allows you to forward traffic from a specific port in the source Docker container (`Container1`) to a specific port in the destination Docker container (`Container2`).
 
