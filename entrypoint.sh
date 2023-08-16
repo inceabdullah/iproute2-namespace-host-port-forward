@@ -126,6 +126,7 @@ if [ ! -z "$DEST_CONTAINER_ID" ]; then
     echo -e "DEST_DOCKER_IP: ${DEST_DOCKER_IP}"
 fi
 
+
 echo "\$@: $@"
 if [ "$DESTINATION_TO" == "ns" ]; then
         UNIX_FILE="/tmp/socket_${HOST_HOST}_${HOST_PORT}_${NS}_${NS_PORT}_${DESTINATION_TO}"
@@ -134,23 +135,33 @@ if [ "$DESTINATION_TO" == "ns" ]; then
         ip netns exec ${NS} socat -lf/dev/null tcp-listen:${NS_PORT},fork,reuseaddr unix-connect:\"${UNIX_FILE}\"
 elif [ "$DESTINATION_TO" == "container" ]; then
         PATTERN="${HOST_HOST}_${HOST_PORT}_container_${CONTAINER_ID}_${CONTAINER_HOST}_${CONTAINER_PORT}_destination_${DESTINATION_TO}_forward_to_${FORWARD_TO}"
+        PATTERN_UNIX_FILE="${HOST_HOST}_${HOST_PORT}_${CONTAINER_ID}_${CONTAINER_HOST}_${CONTAINER_PORT}_${DESTINATION_TO}_to_${FORWARD_TO}"
         # gettin docker PID
         CONTAINER_PID=`docker inspect -f '{{.State.Pid}}' ${CONTAINER_ID}`
         echo -e "${CONTAINER_ID}\t=>\t$CONTAINER_PID"
 
-        # remove old namespace
-        unlink /var/run/netns/${PATTERN} 2>/dev/null &
+
 
         # making ns with PID
         TARGET="/proc_host/${CONTAINER_PID}/ns/net"
         MOUNT_POINT="/var/run/netns/${PATTERN}"
         echo -e "TARGET:\t${TARGET}\MOUNT_POINT:\t${MOUNT_POINT}"
 
+        # remove old namespace
+        ip netns pids $NS | xargs kill
+        ip netns d $NS
+        sleep 2
+
+        unlink ${MOUNT_POINT} 2>/dev/null &
+        sleep 2
+
         mkdir -p /var/run/netns
+	
+
         touch $MOUNT_POINT
         mount -o bind $TARGET $MOUNT_POINT
 
-        UNIX_FILE="/tmp/socket_${PATTERN}"
+        UNIX_FILE="/tmp/socket_${PATTERN_UNIX_FILE}"
         echo -e "Unix file:\t$UNIX_FILE"
 
         NS=$PATTERN
@@ -199,6 +210,3 @@ elif [ "$DESTINATION_TO" == "docker" ]; then
 else
     bash -c "socat tcp-listen:${HOST_PORT},fork,reuseaddr exec:'${NETNS_COMMAND_PREFIX}socat STDIO \"tcp-connect:${DESTINATION_HOST}:${DESTINATION_PORT}\"',nofork"
 fi
-
-
-#TODO docker to docker
