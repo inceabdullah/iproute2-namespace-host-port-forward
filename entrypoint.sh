@@ -48,6 +48,22 @@ case $i in
     CONTAINER_PORT="${i#*=}"
     echo -e "CONTAINER_PORT: ${CONTAINER_PORT}"    
     ;;
+    --source-container-id=*)
+    SOURCE_CONTAINER_ID="${i#*=}"
+    echo -e "SOURCE_CONTAINER_ID: ${SOURCE_CONTAINER_ID}"    
+    ;;
+    --source-port=*)
+    SOURCE_PORT="${i#*=}"
+    echo -e "SOURCE_PORT: ${SOURCE_PORT}"    
+    ;;
+    --dest-container-id=*)
+    DEST_CONTAINER_ID="${i#*=}"
+    echo -e "DEST_CONTAINER_ID: ${DEST_CONTAINER_ID}"    
+    ;;
+    --dest-port=*)
+    DEST_PORT="${i#*=}"
+    echo -e "DEST_PORT: ${DEST_PORT}"    
+    ;;    
     --help)
     HELP=1
     ;;
@@ -98,6 +114,18 @@ else
     DESTINATION_PORT="${NS_PORT}"
 fi
 
+# Get the IP address of the source Docker container
+if [ ! -z "$SOURCE_CONTAINER_ID" ]; then
+    SOURCE_DOCKER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $SOURCE_CONTAINER_ID)
+    echo -e "SOURCE_DOCKER_IP: ${SOURCE_DOCKER_IP}"
+fi
+
+# Get the IP address of the destination Docker container
+if [ ! -z "$DEST_CONTAINER_ID" ]; then
+    DEST_DOCKER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $DEST_CONTAINER_ID)
+    echo -e "DEST_DOCKER_IP: ${DEST_DOCKER_IP}"
+fi
+
 echo "\$@: $@"
 if [ "$DESTINATION_TO" == "ns" ]; then
         UNIX_FILE="/tmp/socket_${HOST_HOST}_${HOST_PORT}_${NS}_${NS_PORT}_${DESTINATION_TO}"
@@ -130,8 +158,47 @@ elif [ "$DESTINATION_TO" == "container" ]; then
         
         socat -lf/dev/null unix-listen:\"${UNIX_FILE}\",fork,reuseaddr TCP:${HOST_HOST}:${HOST_PORT} &
         ip netns exec ${NS} socat -lf/dev/null tcp-listen:${NS_PORT},fork,reuseaddr unix-connect:\"${UNIX_FILE}\"
+elif [ "$DESTINATION_TO" == "docker" ]; then
+    # Get the PID of the source Docker container
+    SOURCE_CONTAINER_PID=$(docker inspect -f '{{.State.Pid}}' $SOURCE_CONTAINER_ID)
+    echo -e "${SOURCE_CONTAINER_ID}\t=>\t$SOURCE_CONTAINER_PID"
+
+    # Get the PID of the destination Docker container
+    DEST_CONTAINER_PID=$(docker inspect -f '{{.State.Pid}}' $DEST_CONTAINER_ID)
+    echo -e "${DEST_CONTAINER_ID}\t=>\t$DEST_CONTAINER_PID"
+
+    # Create a network namespace for the source Docker container
+    SOURCE_PATTERN="source_${SOURCE_CONTAINER_ID}_${SOURCE_PORT}"
+
+    SOURCE_TARGET="/proc_host/${SOURCE_CONTAINER_PID}/ns/net"
+    SOURCE_MOUNT_POINT="/var/run/netns/${SOURCE_PATTERN}"
+    mkdir -p /var/run/netns
+        # remove old namespace
+        unlink ${SOURCE_MOUNT_POINT} 2>/dev/null || true
+    touch $SOURCE_MOUNT_POINT
+    mount -o bind $SOURCE_TARGET $SOURCE_MOUNT_POINT
+
+    # Create a network namespace for the destination Docker container
+    DEST_PATTERN="dest_${DEST_CONTAINER_ID}"
+    DEST_TARGET="/proc_host/${DEST_CONTAINER_PID}/ns/net"
+    DEST_MOUNT_POINT="/var/run/netns/${DEST_PATTERN}"
+    mkdir -p /var/run/netns
+        # remove old namespace
+        unlink ${DEST_MOUNT_POINT} 2>/dev/null || true   
+    touch $DEST_MOUNT_POINT
+    mount -o bind $DEST_TARGET $DEST_MOUNT_POINT
+
+    # Use socat and ip netns to set up port forwarding between the source and destination Docker containers
+    UNIX_FILE_SOURCE="/tmp/socket_${SOURCE_PATTERN}"
+    UNIX_FILE_DEST="/tmp/socket_${DEST_PATTERN}"
+    # echo ip netns exec ${DEST_PATTERN} socat -lf/dev/null unix-listen:\"${UNIX_FILE_DEST}\",fork,reuseaddr TCP:$HOST_HOST:$DEST_PORT &&
+    ip netns exec ${DEST_PATTERN} socat -lf/dev/null unix-listen:\"${UNIX_FILE_DEST}\",fork,reuseaddr TCP:$HOST_HOST:$DEST_PORT &
+    # echo ip netns exec ${SOURCE_PATTERN} socat -lf/dev/null tcp-listen:$SOURCE_PORT,fork,reuseaddr unix-connect:\"${UNIX_FILE_DEST}\" &&
+    ip netns exec ${SOURCE_PATTERN} socat -lf/dev/null tcp-listen:$SOURCE_PORT,fork,reuseaddr unix-connect:\"${UNIX_FILE_DEST}\"
+    # echo ""
 else
     bash -c "socat tcp-listen:${HOST_PORT},fork,reuseaddr exec:'${NETNS_COMMAND_PREFIX}socat STDIO \"tcp-connect:${DESTINATION_HOST}:${DESTINATION_PORT}\"',nofork"
 fi
 
 
+#TODO docker to docker
